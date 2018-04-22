@@ -39,7 +39,7 @@ defmodule Remix do
           last_mtime =
             case Map.fetch(state, path) do
               {:ok, val} -> val
-              :error -> nil
+              :error -> []
             end
 
           handle_path(path, current_mtime, last_mtime)
@@ -77,7 +77,7 @@ defmodule Remix do
     def get_current_mtime(dir) do
       case File.ls(dir) do
         {:ok, files} -> get_current_mtime(files, [], dir)
-        _ -> nil
+        _ -> []
       end
     end
 
