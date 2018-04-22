@@ -30,72 +30,46 @@ defmodule Remix do
     end
 
     def handle_info(:poll_and_reload, state) do
-      paths = Application.get_all_env(:remix)[:paths]
+      paths = [Path.expand("lib", "."), Path.expand("config", ".")]
 
-      new_state =
-        Map.new(paths, fn path ->
-          current_mtime = get_current_mtime(path)
+      lastest_mtime = get_lastest_mtime(paths)
 
-          last_mtime =
-            case Map.fetch(state, path) do
-              {:ok, val} -> val
-              :error -> []
-            end
-
-          handle_path(path, current_mtime, last_mtime)
-        end)
+      if state < lastest_mtime, do: remix()
 
       Process.send_after(__MODULE__, :poll_and_reload, 1000)
-      {:noreply, new_state}
+      {:noreply, lastest_mtime}
     end
 
-    def handle_path(path, current_mtime, current_mtime), do: {path, current_mtime}
-
-    def handle_path(path, current_mtime, _) do
-      comp_elixir = fn -> Mix.Tasks.Compile.Elixir.run(["--ignore-module-conflict"]) end
-      comp_escript = fn -> Mix.Tasks.Escript.Build.run([]) end
-
-      case Application.get_all_env(:remix)[:silent] do
-        true ->
-          ExUnit.CaptureIO.capture_io(comp_elixir)
-
-          if Application.get_all_env(:remix)[:escript] == true do
-            ExUnit.CaptureIO.capture_io(comp_escript)
-          end
-
-        _ ->
-          comp_elixir.()
-
-          if Application.get_all_env(:remix)[:escript] == true do
-            comp_escript.()
-          end
-      end
-
-      {path, current_mtime}
+    def remix() do
+      Mix.Tasks.Compile.Elixir.run(["--ignore-module-conflict"])
+      # Mix.Tasks.Escript.Build.run([])
     end
 
-    def get_current_mtime(dir) do
-      case File.ls(dir) do
-        {:ok, files} -> get_current_mtime(files, [], dir)
-        _ -> []
-      end
-    end
-
-    def get_current_mtime([], mtimes, _cwd) do
-      mtimes
+    def get_lastest_mtime(dirs) when is_list(dirs) do
+      dirs
+      |> Enum.map(&get_modify_times/1)
+      |> List.flatten()
       |> Enum.sort()
       |> Enum.reverse()
       |> List.first()
     end
 
-    def get_current_mtime([h | tail], mtimes, cwd) do
+    def get_modify_times(dir) do
+      case File.ls(dir) do
+        {:ok, files} -> get_modify_times(files, [], dir)
+        _ -> []
+      end
+    end
+
+    def get_modify_times([], _mtimes, _cwd), do: []
+    def get_modify_times([h | tail], mtimes, cwd) do
       mtime =
         case File.dir?("#{cwd}/#{h}") do
-          true -> get_current_mtime("#{cwd}/#{h}")
+          true -> get_modify_times("#{cwd}/#{h}")
           false -> File.stat!("#{cwd}/#{h}").mtime
         end
 
-      get_current_mtime(tail, [mtime | mtimes], cwd)
+      get_modify_times(tail, [mtime | mtimes], cwd)
     end
   end
 end
